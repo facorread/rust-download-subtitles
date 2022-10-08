@@ -1,0 +1,18 @@
+(
+    client_config: (
+        api_key: "Here you must paste an API key from https://www.opensubtitles.com/en/consumers",
+        account: [
+            ("Enter a valid OpenSubtitles.com username", "Password")
+        ],
+    ),
+    episode_config: (
+        destination_folder: r"C:\Users\nool.info\subs",
+        episode_from: 1,
+        episode_to: 10,
+        languages: "en",
+        parent_imdb_id: "200276",
+        season_number: 1,
+        show_year: "1999",
+        title: "west.wing",
+    ),
+)
