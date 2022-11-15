@@ -327,7 +327,7 @@ async fn main() -> anyhow::Result<()> {
                 let file_ids = {
                     use rust_download_subtitles::SearchResultsResponse;
                     // &hearing_impaired=include // This parameter leads to an unnecessary redirect
-                    let url = url.join(&format!("subtitles?episode_number={episode}&foreign_parts_only=exclude&languages={}&parent_imdb_id={}&season_number={}", episode_config.parent_imdb_id, episode_config.languages, episode_config.season_number)).context("Creating the /subtitles url")?;
+                    let url = url.join(&format!("subtitles?episode_number={episode}&foreign_parts_only=exclude&languages={}&parent_imdb_id={}&season_number={}", episode_config.languages, episode_config.parent_imdb_id, episode_config.season_number)).context("Creating the /subtitles url")?;
                     let request = Request::new(Method::GET, url);
                     http_sender.try_send((task_index, token_index, request)).context("Preparing a request for /subtitles")?;
                     let (tok_index, response) = response_channel.recv().await.context(lazy_format!("Processing a response from /subtitles for episode {episode}"))?;
