@@ -57,6 +57,7 @@ mod rust_download_subtitles {
         pub episode_from: u32,
         pub episode_to: u32, // Inclusive
         pub languages: String,
+        pub latest_only: bool, // true to download only the latest subtitle for the episode; false to download all subtitles
         pub parent_imdb_id: String, // String because it is not involved in padding or operations
         pub season_number: u32, // This will be padded with zeroes
         pub show_year: String, // String because it is not involved in padding or operations
@@ -163,14 +164,25 @@ mod rust_download_subtitles {
     }
 
     impl SearchResultsResponse {
-        /// Returns the file ids for the best subtitle
-        pub fn file_ids(&self, episode_number: u32) -> anyhow::Result<Vec<u32>> {
-            let res = self.data.iter().filter(|s| !s.attributes.files.is_empty()).max_by(sub_compare);
-            if let Some(best_sub) = res {
-                Ok(best_sub.attributes.files.iter().map(|s| s.file_id).collect())
-            } else {
+        /// Returns the file ids for the best subtitles
+        pub fn file_ids(&self, episode_number: u32, latest_only: bool) -> anyhow::Result<Vec<u32>> {
+            let iter = self.data.iter().filter(|s| !s.attributes.files.is_empty());
+            if latest_only {
+                if let Some(best_sub) = iter.clone().max_by(sub_compare) {
+                    return Ok(best_sub.attributes.files.iter().map(|s| s.file_id).collect())
+                }
+            }
+            let mut res_vec: Vec<u32> = Vec::with_capacity(2 * self.data.len());
+            for sub in iter {
+                for file in &sub.attributes.files {
+                    res_vec.push(file.file_id);
+                }
+            }
+            if res_vec.is_empty() {
                 use anyhow::bail;
-                bail!(format!("No subtitles found for episode {}", episode_number));
+                bail!(format!("No subtitles found for episode {}", episode_number))
+            } else {
+                Ok(res_vec)
             }
         }
     }
@@ -334,7 +346,7 @@ async fn main() -> anyhow::Result<()> {
                     token_index = tok_index;
                     ensure!(response.status().is_success(), lazy_format!("{} for /subtitles for episode {episode}", response.status()));
                     let search_results = response.json::<SearchResultsResponse>().await.context(lazy_format!("Processing the list of subtitles for episode {episode}"))?;
-                    search_results.file_ids(episode).context(lazy_format!("Enumerating subtitles for episode {episode}"))?
+                    search_results.file_ids(episode, episode_config.latest_only).context(lazy_format!("Enumerating subtitles for episode {episode}"))?
                 };
                 for file_id in file_ids {
                     let (url, file_extension) = {

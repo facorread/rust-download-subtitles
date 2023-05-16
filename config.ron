@@ -10,6 +10,7 @@
         episode_from: 1,
         episode_to: 10,
         languages: "en",
+        latest_only: true,
         parent_imdb_id: "200276",
         season_number: 1,
         show_year: "1999",
