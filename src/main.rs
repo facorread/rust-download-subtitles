@@ -27,7 +27,7 @@ mod rust_download_subtitles {
 
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     pub struct TokenIndex {
-        pub token_index: usize, // 0 is for unauthenticated API use, such as /subtitles
+        pub token_index: usize,
     }
 
     pub static TOKEN_0: TokenIndex = TokenIndex {token_index: 0};
@@ -43,6 +43,21 @@ mod rust_download_subtitles {
     pub trait HttpStatus {
         fn check_status(&self) -> anyhow::Result<()>;
         fn try_again_later(&self) -> bool;
+    }
+
+    #[derive(Clone, Debug)]
+    pub struct AuthenticatedClient {
+        pub base_url: String,
+        pub client: reqwest::Client,
+    }
+
+    impl Default for AuthenticatedClient {
+        fn default() -> Self {
+            Self {
+                base_url: Default::default(),
+                client: reqwest::Client::new(),
+            }
+        }
     }
 
     #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -111,11 +126,17 @@ mod rust_download_subtitles {
 
     #[derive(Debug, Deserialize)]
     pub struct LoginResponse {
+        // base_url: String, // Has not been activated yet https://opensubtitles.stoplight.io/docs/opensubtitles-api/51ea4c484e6e5-changelog#16-february-2023
         token: String,
         // pub status: u16, // The HTTP status code is already handled through HttpStatus.
     }
 
     impl LoginResponse {
+        pub fn base_url (&self) -> String {
+            // self.base_url.clone()
+            "api.opensubtitles.com".to_string()
+        }
+
         pub fn token(&self) -> anyhow::Result<reqwest::header::HeaderValue> {
             use anyhow::Context;
             reqwest::header::HeaderValue::try_from(format!("Bearer {}", self.token)).context("Processing login session token")
@@ -302,7 +323,11 @@ async fn main() -> anyhow::Result<()> {
     use ron::de::from_str;
     use std::str::FromStr;
     use tokio::io::AsyncReadExt;
-    // flexi_logger::Logger::try_with_str("Debug")?.start()?;
+    // let _logger_handle = {
+    //     use flexi_logger::{Logger, LogSpecification, LevelFilter};
+    //     // LevelFilter::Debug // LevelFilter::Trace
+    //     Logger::with(LogSpecification::builder().default(LevelFilter::Trace).build())
+    // }.start()?;
     let mut config_file = tokio::fs::OpenOptions::new().read(true).open("config.ron").await.context("Opening configuration file config.ron (see documentation)")?;
     let mut buf = Vec::new();
     config_file.read_to_end(&mut buf).await?;
@@ -348,6 +373,7 @@ async fn main() -> anyhow::Result<()> {
                     let search_results = response.json::<SearchResultsResponse>().await.context(lazy_format!("Processing the list of subtitles for episode {episode}"))?;
                     search_results.file_ids(episode, episode_config.latest_only).context(lazy_format!("Enumerating subtitles for episode {episode}"))?
                 };
+                print!(" {episode}_");
                 for file_id in file_ids {
                     let (url, file_extension) = {
                         use reqwest::Body;
@@ -390,7 +416,8 @@ async fn main() -> anyhow::Result<()> {
     // Section 3: HTTP client
     // This section communicates with the OpenSubtitles server,
     // following its mandatory rate limitations.
-    let mut client = Vec::with_capacity(1 + config.client_config.account.len());
+    let mut client: Vec<rust_download_subtitles::AuthenticatedClient> = Vec::new();
+    client.resize(config.client_config.account.len(), Default::default());
     {
         use lazy_format::lazy_format;
         use reqwest::header::HeaderValue;
@@ -403,7 +430,7 @@ async fn main() -> anyhow::Result<()> {
         headers.insert(reqwest::header::CONTENT_TYPE, HeaderValue::from_static("application/json"));
         let login_client = rust_download_subtitles::client(headers.clone()).context(lazy_format!("Creating an HTTP client for /login"))?;
         let mut login_next_instant = tokio::time::Instant::now();
-        for (login, password) in config.client_config.account.into_iter() {
+        for (token_index, (login, password)) in config.client_config.account.into_iter().enumerate() {
             // Section 3.1: Login
             // We don't use iterators to build the client vector, because login might fail.
             let login_result = async {
@@ -426,7 +453,10 @@ async fn main() -> anyhow::Result<()> {
                         let login_response = response.json::<LoginResponse>().await.context(lazy_format!("Processing the login response for account {}", &login))?;
                         let mut headers = headers.clone();
                         headers.insert(AUTHORIZATION, login_response.token().context("Processing a session token")?);
-                        client.push(rust_download_subtitles::client(headers).context("Creating an HTTP client")?);
+                        *client.get_mut(token_index).unwrap() = rust_download_subtitles::AuthenticatedClient {
+                            base_url: login_response.base_url(),
+                            client: rust_download_subtitles::client(headers).context("Creating an HTTP client")?,
+                        };
                         return Ok::<(), anyhow::Error>(());
                     } else {
                         use rust_download_subtitles::MessageResponse;
@@ -460,7 +490,10 @@ async fn main() -> anyhow::Result<()> {
                 use lazy_format::lazy_format;
                 use rust_download_subtitles::HttpStatus;
                 sleep_until(_next_instant).await;
-                let response = client.get(token_index.token_index).context(lazy_format!("Internal error on client.get(token_index)"))?.execute(request.try_clone().context(lazy_format!("Internal error on request.try_clone()"))?).await.context("Receiving an HTTP response")?;
+                let base_client = client.get(token_index.token_index).context(lazy_format!("Internal error on client.get(token_index)"))?;
+                let mut request = request.try_clone().context(lazy_format!("Internal error on request.try_clone()"))?;
+                request.url_mut().set_host(Some(&base_client.base_url)).unwrap();
+                let response = base_client.client.execute(request).await.context("Receiving an HTTP response")?;
                 let status = response.status();
                 if status.try_again_later() {
                     _next_instant = Instant::now() + Duration::from_secs(1);
@@ -498,7 +531,7 @@ async fn main() -> anyhow::Result<()> {
             use rust_download_subtitles::{HttpStatus, MessageResponse};
             use tokio::time::{sleep_until, Instant, Duration};
             sleep_until(_next_instant).await;
-            let response = cli.delete(url.clone()).send().await?;
+            let response = cli.client.delete(url.clone()).send().await?;
             let status = response.status();
             let response = response.json::<MessageResponse>().await?;
             if status.try_again_later() {
