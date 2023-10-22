@@ -2,8 +2,8 @@
 # rust-download-subtitles
 Download subtitles for TV shows from OpenSubtitles.com
 
-Copyright © 2022 Fabio A. Correa Duran facorread@gmail.com
-    
+Copyright © 2022-2023 Fabio A. Correa Duran facorread@gmail.com
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
@@ -19,7 +19,7 @@ limitations under the License.
 
 mod rust_download_subtitles {
     use serde_derive::{Deserialize, Serialize};
-    
+
     #[derive(Clone, Copy, Debug)]
     pub struct TaskIndex {
         pub task_index: usize,
@@ -160,7 +160,7 @@ mod rust_download_subtitles {
     #[derive(Debug, Deserialize)]
     pub struct SubtitleMatchResponse {
         // id: String,
-        // #[serde(rename = "type")] 
+        // #[serde(rename = "type")]
         // sub_type: String,
         attributes: SubtitleMatchAttributesResponse,
     }
@@ -260,9 +260,9 @@ mod rust_download_subtitles {
         let timeout = Duration::new(10, 0);
         // .http2_max_frame_size(Some(10000000)).http2_prior_knowledge() // Forced http/2 does not work
         // .http2_keep_alive_interval(interval).http2_keep_alive_timeout(timeout).http2_keep_alive_while_idle(true)
-        reqwest::Client::builder().connect_timeout(timeout).connection_verbose(true).default_headers(headers).build()
+        reqwest::Client::builder().connect_timeout(timeout).connection_verbose(true).default_headers(headers).user_agent("RustDownloadSubtitles v0.0.1").build()
     }
-   
+
     async fn create_file_impl(mut path: std::path::PathBuf, extension: &str) -> anyhow::Result<tokio::fs::File>
     {
         use anyhow::{ensure,Context};
