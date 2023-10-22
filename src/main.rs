@@ -260,7 +260,7 @@ mod rust_download_subtitles {
         let timeout = Duration::new(10, 0);
         // .http2_max_frame_size(Some(10000000)).http2_prior_knowledge() // Forced http/2 does not work
         // .http2_keep_alive_interval(interval).http2_keep_alive_timeout(timeout).http2_keep_alive_while_idle(true)
-        reqwest::Client::builder().connect_timeout(timeout).connection_verbose(true).default_headers(headers).user_agent("RustDownloadSubtitles v0.0.1").build()
+        reqwest::Client::builder().connect_timeout(timeout).connection_verbose(true).default_headers(headers).user_agent("RustDownloadSubtitles v0.1.1").build()
     }
 
     async fn create_file_impl(mut path: std::path::PathBuf, extension: &str) -> anyhow::Result<tokio::fs::File>
@@ -422,6 +422,7 @@ async fn main() -> anyhow::Result<()> {
         use lazy_format::lazy_format;
         use reqwest::header::HeaderValue;
         let mut headers = reqwest::header::HeaderMap::with_capacity(20);
+        headers.insert(reqwest::header::ACCEPT, HeaderValue::from_static("*/*"));
         {
             let mut api_key = HeaderValue::from_str(&config.client_config.api_key)?;
             api_key.set_sensitive(true);
